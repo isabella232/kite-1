@@ -64,7 +64,7 @@ public class TestConstraints {
       .year("timestamp")
       .month("timestamp")
       .day("timestamp")
-      .identity("id", String.class, 100000)
+      .identity("id", "id_copy", String.class, 100000)
       .build();
 
   @Test
@@ -466,7 +466,7 @@ public class TestConstraints {
     PartitionStrategy strategy = new PartitionStrategy.Builder()
         .hash("color", "hash", 50)
         .year("created_at").month("created_at").day("created_at")
-        .identity("color", String.class, 50000)
+        .identity("color", "id_color", String.class, 50000)
         .build();
 
     StorageKey key = new StorageKey(strategy);
@@ -487,6 +487,50 @@ public class TestConstraints {
         new DateTime(2013, 9, 1, 12, 0, DateTimeZone.UTC).getMillis());
     Assert.assertEquals(Sets.newHashSet("number", "created_at"),
         c3.minimizeFor(key).keySet());
+  }
+
+  @Test
+  public void testAlignedWithPartitionBoundaries() {
+    PartitionStrategy hashStrategy = new PartitionStrategy.Builder()
+        .hash("id", "bucket", 32)
+        .build();
+    PartitionStrategy withColor = new PartitionStrategy.Builder()
+        .range("color", "blue", "green", "red")
+        .year("timestamp")
+        .month("timestamp")
+        .day("timestamp")
+        .identity("id", "id_copy", String.class, -1)
+        .build();
+
+    Constraints c = new Constraints().with("id", "a", "b", "c");
+
+    // if the data is not partitioned by a field, then the partitioning cannot
+    // be used to satisfy constraints for that field
+    Assert.assertFalse("Cannot be satisfied by partition unless partitioned",
+        c.with("color", "orange").alignedWithBoundaries(strategy));
+    // even if partitioned, lacking a strict projection means that we cannot
+    // reason about what the predicate would accept given the partition data
+    Assert.assertFalse("Cannot be satisfied by hash partition filtering",
+        c.alignedWithBoundaries(hashStrategy));
+    Assert.assertFalse("Cannot be satisfied by time filtering for timestamp",
+        c.with("timestamp",
+            new DateTime(2013, 9, 1, 12, 0, DateTimeZone.UTC).getMillis())
+            .alignedWithBoundaries(strategy));
+    // if there is a strict projection, we can only use it if it is equivalent
+    // to the permissive projection. if we can't tell or if the strict
+    // projection is too conservative, we can't use the partition data
+    Assert.assertFalse("Cannot be satisfied because equality doesn't hold",
+        c.with("color", "green", "brown")
+            .alignedWithBoundaries(withColor));
+    Assert.assertFalse("Cannot be satisfied because equality doesn't hold",
+        c.fromAfter("color", "blue").to("color", "red")
+            .alignedWithBoundaries(withColor));
+
+    // if the strict projection and permissive projections are identical, then
+    // we can conclude that the information in the partitions is sufficient to
+    // satisfy the original predicate.
+    Assert.assertTrue("Should be satisfied by partition filtering on id",
+        c.alignedWithBoundaries(strategy));
   }
 
   @Test

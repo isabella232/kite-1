@@ -762,6 +762,24 @@ public class MorphlineTest extends AbstractMorphlineTest {
   }
   
   @Test
+  public void testReadClobWithDestination() throws IOException {
+    morphline = createMorphline("test-morphlines/readClobDestField");
+    for (int i = 0; i < 3; i++) {
+      Record record = new Record();
+      String msg = "foo";
+      record.put(Fields.ATTACHMENT_BODY, msg.getBytes("UTF-8"));
+      collector.reset();
+      startSession();
+      assertEquals(1, collector.getNumStartEvents());
+      assertTrue(morphline.process(record));
+      Record expected = new Record();
+      expected.put("myAwesomeDestination", msg);
+      assertEquals(expected, collector.getFirstRecord());
+      assertNotSame(record, collector.getFirstRecord());
+    }
+  }
+
+  @Test
   public void testReadCSV() throws Exception {
     morphline = createMorphline("test-morphlines/readCSV");    
     for (int i = 0; i < 3; i++) {
@@ -1914,6 +1932,7 @@ public class MorphlineTest extends AbstractMorphlineTest {
   // via log4j.logger.org.kitesdk.morphline=INFO in log4j.properties
   public void benchmark() throws Exception {
     String morphlineConfigFile = "test-morphlines/readCSVWithoutQuoting";
+    //String morphlineConfigFile = "test-morphlines/readCSVWithoutQuotingUsingSplit";
     //String morphlineConfigFile = "test-morphlines/grokEmail";
     //String morphlineConfigFile = "test-morphlines/grokSyslogNgCisco";
     long durationSecs = 20;

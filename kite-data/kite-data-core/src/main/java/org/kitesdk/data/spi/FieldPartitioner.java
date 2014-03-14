@@ -16,6 +16,7 @@
 package org.kitesdk.data.spi;
 
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import java.util.Comparator;
 import javax.annotation.concurrent.Immutable;
@@ -59,6 +60,13 @@ public abstract class FieldPartitioner<S, T> implements Function<S, T>, Comparat
 
   protected FieldPartitioner(String sourceName, String name,
       Class<S> sourceType, Class<T> type, int cardinality) {
+    // TODO: use this in 0.13.0
+    //Preconditions.checkArgument(!sourceName.equals(name),
+    //    "Source name and partition name cannot be the same");
+    if (sourceName.equals(name)) {
+      LOG.warn("Partition name equals source field name.\n" +
+          "\tThis breaks Hive compatibility and will not be allowed in 0.13.0");
+    }
     this.sourceName = sourceName;
     this.name = name;
     this.sourceType = sourceType;
@@ -108,7 +116,7 @@ public abstract class FieldPartitioner<S, T> implements Function<S, T>, Comparat
    * </p>
    * @since 0.3.0
    *
-   * @deprecated will be removed in 0.12.0
+   * @deprecated will be removed in 0.13.0
    */
   @Deprecated
   public abstract T valueFromString(String stringValue);
@@ -121,7 +129,7 @@ public abstract class FieldPartitioner<S, T> implements Function<S, T>, Comparat
    * </p>
    * @since 0.4.0
    *
-   * @deprecated will be removed in 0.12.0
+   * @deprecated will be removed in 0.13.0
    */
   @Deprecated
   public String valueToString(T value) {

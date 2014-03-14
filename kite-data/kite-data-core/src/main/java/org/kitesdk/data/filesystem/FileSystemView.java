@@ -19,11 +19,12 @@ package org.kitesdk.data.filesystem;
 import com.google.common.base.Function;
 import com.google.common.collect.Iterators;
 import java.util.Iterator;
+import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.DatasetException;
 import org.kitesdk.data.DatasetIOException;
 import org.kitesdk.data.DatasetReader;
 import org.kitesdk.data.DatasetWriter;
-import org.kitesdk.data.spi.AbstractRefineableView;
+import org.kitesdk.data.spi.AbstractRefinableView;
 import org.kitesdk.data.spi.Constraints;
 import org.kitesdk.data.spi.Pair;
 import org.kitesdk.data.spi.StorageKey;
@@ -37,12 +38,12 @@ import java.io.IOException;
 
 /**
  * FileSystem implementation of a {@link org.kitesdk.data.spi.Constraints}-based
- * {@link org.kitesdk.data.RefineableView}.
+ * {@link org.kitesdk.data.RefinableView}.
  *
  * @param <E> The type of records read and written by this view.
  */
 @Immutable
-class FileSystemView<E> extends AbstractRefineableView<E> {
+class FileSystemView<E> extends AbstractRefinableView<E> {
 
   private final FileSystem fs;
   private final Path root;
@@ -75,17 +76,23 @@ class FileSystemView<E> extends AbstractRefineableView<E> {
     if (dataset.getDescriptor().isPartitioned()) {
       return new PartitionedDatasetWriter<E>(this);
     } else {
-      return FileSystemWriters.newFileWriter(fs, root, dataset.getDescriptor());
+      return new FileSystemWriter<E>(fs, root, dataset.getDescriptor());
     }
   }
 
   @Override
   public boolean deleteAll() {
-    boolean deleted = false;
-    for (Pair<StorageKey, Path> partition : partitionIterator()) {
-      deleted = cleanlyDelete(fs, root, partition.second()) || deleted;
+    DatasetDescriptor descriptor = getDataset().getDescriptor();
+    if (!descriptor.isPartitioned()) {
+      // at least one constraint, but not partitioning to satisfy it
+      throw new UnsupportedOperationException(
+          "Cannot cleanly delete view: " + this);
     }
-    return deleted;
+    if (!constraints.alignedWithBoundaries(descriptor.getPartitionStrategy())) {
+      throw new UnsupportedOperationException(
+          "Cannot cleanly delete view: " + this);
+    }
+    return deleteAllUnsafe();
   }
 
   PathIterator pathIterator() {
@@ -128,6 +135,14 @@ class FileSystemView<E> extends AbstractRefineableView<E> {
     } catch (IOException ex) {
       throw new DatasetException("Cannot list partitions in view:" + this, ex);
     }
+  }
+
+  boolean deleteAllUnsafe() {
+    boolean deleted = false;
+    for (Pair<StorageKey, Path> partition : partitionIterator()) {
+      deleted = cleanlyDelete(fs, root, partition.second()) || deleted;
+    }
+    return deleted;
   }
 
   private static boolean cleanlyDelete(FileSystem fs, Path root, Path dir) {

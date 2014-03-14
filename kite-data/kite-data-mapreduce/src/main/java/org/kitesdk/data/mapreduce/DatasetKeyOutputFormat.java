@@ -15,6 +15,7 @@
  */
 package org.kitesdk.data.mapreduce;
 
+import com.google.common.annotations.Beta;
 import java.io.IOException;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
@@ -43,6 +44,7 @@ import org.kitesdk.data.spi.Mergeable;
  *
  * @param <E> The type of entities in the {@code Dataset}.
  */
+@Beta
 public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
 
   public static final String KITE_REPOSITORY_URI = "kite.outputRepositoryUri";
@@ -118,7 +120,7 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
 
     @Override
     public void setupTask(TaskAttemptContext taskContext) {
-      createTaskAttemptDataset(taskContext);
+      // do nothing: the task attempt dataset is created in getRecordWriter
     }
 
     @Override
@@ -129,10 +131,12 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
     @Override
     @SuppressWarnings("unchecked")
     public void commitTask(TaskAttemptContext taskContext) throws IOException {
-      Dataset<E> jobDataset = loadJobDataset(taskContext);
       Dataset<E> taskAttemptDataset = loadTaskAttemptDataset(taskContext);
-      ((Mergeable<Dataset<E>>) jobDataset).merge(taskAttemptDataset);
-      deleteTaskAttemptDataset(taskContext);
+      if (taskAttemptDataset != null) {
+        Dataset<E> jobDataset = loadJobDataset(taskContext);
+        ((Mergeable<Dataset<E>>) jobDataset).merge(taskAttemptDataset);
+        deleteTaskAttemptDataset(taskContext);
+      }
     }
 
     @Override
@@ -146,9 +150,8 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
     Configuration conf = taskAttemptContext.getConfiguration();
     Dataset<E> dataset = loadDataset(taskAttemptContext);
 
-    if (dataset instanceof Mergeable) {
-      // use per-task attempt datasets for filesystem datasets
-      dataset = loadTaskAttemptDataset(taskAttemptContext);
+    if (usePerTaskAttemptDatasets(dataset)) {
+      dataset = loadOrCreateTaskAttemptDataset(taskAttemptContext);
     }
 
     // TODO: the following should generalize with views
@@ -171,8 +174,17 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
   @Override
   public OutputCommitter getOutputCommitter(TaskAttemptContext taskAttemptContext) {
     Dataset<E> dataset = loadDataset(taskAttemptContext);
-    return (dataset instanceof Mergeable) ?
+    return usePerTaskAttemptDatasets(dataset) ?
         new MergeOutputCommitter<E>() : new NullOutputCommitter();
+  }
+
+  private static <E> boolean usePerTaskAttemptDatasets(Dataset<E> dataset) {
+    // new API output committers are not called properly in Hadoop 1
+    return !isHadoop1() && dataset instanceof Mergeable;
+  }
+
+  private static boolean isHadoop1() {
+    return !JobContext.class.isInterface();
   }
 
   private static DatasetRepository getDatasetRepository(JobContext jobContext) {
@@ -182,12 +194,12 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
 
   private static String getJobDatasetName(JobContext jobContext) {
     Configuration conf = jobContext.getConfiguration();
-    return conf.get(KITE_DATASET_NAME) + "-" + jobContext.getJobID().toString();
+    return conf.get(KITE_DATASET_NAME) + "_" + jobContext.getJobID().toString();
   }
 
   private static String getTaskAttemptDatasetName(TaskAttemptContext taskContext) {
     Configuration conf = taskContext.getConfiguration();
-    return conf.get(KITE_DATASET_NAME) + "-" + taskContext.getTaskAttemptID().toString();
+    return conf.get(KITE_DATASET_NAME) + "_" + taskContext.getTaskAttemptID().toString();
   }
 
   private static <E> Dataset<E> loadDataset(JobContext jobContext) {
@@ -213,21 +225,32 @@ public class DatasetKeyOutputFormat<E> extends OutputFormat<E, Void> {
     repo.delete(getJobDatasetName(jobContext));
   }
 
-  private static <E> Dataset<E> createTaskAttemptDataset(TaskAttemptContext taskContext) {
+  private static <E> Dataset<E> loadOrCreateTaskAttemptDataset(TaskAttemptContext taskContext) {
     Dataset<Object> dataset = loadDataset(taskContext);
     String taskAttemptDatasetName = getTaskAttemptDatasetName(taskContext);
     DatasetRepository repo = getDatasetRepository(taskContext);
-    return repo.create(taskAttemptDatasetName, copy(dataset.getDescriptor()));
+    if (repo.exists(taskAttemptDatasetName)) {
+      return repo.load(taskAttemptDatasetName);
+    } else {
+      return repo.create(taskAttemptDatasetName, copy(dataset.getDescriptor()));
+    }
   }
 
   private static <E> Dataset<E> loadTaskAttemptDataset(TaskAttemptContext taskContext) {
     DatasetRepository repo = getDatasetRepository(taskContext);
-    return repo.load(getTaskAttemptDatasetName(taskContext));
+    String taskAttemptDatasetName = getTaskAttemptDatasetName(taskContext);
+    if (repo.exists(taskAttemptDatasetName)) {
+      return repo.load(taskAttemptDatasetName);
+    }
+    return null;
   }
 
   private static void deleteTaskAttemptDataset(TaskAttemptContext taskContext) {
     DatasetRepository repo = getDatasetRepository(taskContext);
-    repo.delete(getTaskAttemptDatasetName(taskContext));
+    String taskAttemptDatasetName = getTaskAttemptDatasetName(taskContext);
+    if (repo.exists(taskAttemptDatasetName)) {
+      repo.delete(taskAttemptDatasetName);
+    }
   }
 
   private static DatasetDescriptor copy(DatasetDescriptor descriptor) {

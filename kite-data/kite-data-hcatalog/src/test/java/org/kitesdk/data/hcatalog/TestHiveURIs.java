@@ -29,6 +29,7 @@ import java.net.URI;
 import junit.framework.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.kitesdk.data.hcatalog.impl.HCatalog;
 
 /**
  * This verifies that the URI system returns correctly configured repositories.
@@ -81,22 +82,46 @@ public class TestHiveURIs extends TestFileSystemURIs {
         repo.getUri());
   }
 
-  @Test(expected=DatasetRepositoryException.class)
-  public void testExternalURIFailsWithoutHDFSInfo() {
-    DatasetRepositories.open("repo:hive:/tmp/hive-repo");
+  @Test
+  public void testExternalURILocalFileSystem() {
+    URI repoUri = URI.create("repo:hive:/tmp/hive-repo");
+    DatasetRepository repo = DatasetRepositories.open(repoUri);
 
-    // if no HDFS connection options are given, then the constructed URI will
-    // look like this: hdfs:/tmp/hive-repo, but without the HDFS host and port,
-    // this will fail.
+    Assert.assertNotNull("Received a repository", repo);
+    org.junit.Assert.assertTrue("Repo should be a HCatalogExternalDatasetRepository",
+        repo instanceof HCatalogExternalDatasetRepository);
+    Assert.assertEquals("Repository URI", repoUri, repo.getUri());
+
+    // verify location
+    DatasetDescriptor created = repo.create("test",
+        new DatasetDescriptor.Builder()
+            .schemaLiteral("\"string\"")
+            .build()).getDescriptor();
+    Assert.assertEquals("Location should be in local FS",
+        "file", created.getLocation().getScheme());
+    Assert.assertTrue("Location should be in the repo path",
+        created.getLocation().getPath().startsWith("/tmp/hive-repo"));
   }
 
-  @Test(expected=DatasetRepositoryException.class)
-  public void testExternalOpaqueURIFailsWithoutHDFSInfo() {
-    DatasetRepositories.open("repo:hive:tmp/hive-repo");
+  @Test
+  public void testExternalOpaqueURILocalFileSystem() {
+    URI repoUri = URI.create("repo:hive:/tmp/hive-repo");
+    DatasetRepository repo = DatasetRepositories.open(repoUri);
 
-    // if no HDFS connection options are given, then the constructed URI will
-    // look like this: hdfs:/tmp/hive-repo, but without the HDFS host and port,
-    // this will fail.
+    Assert.assertNotNull("Received a repository", repo);
+    org.junit.Assert.assertTrue("Repo should be a HCatalogExternalDatasetRepository",
+        repo instanceof HCatalogExternalDatasetRepository);
+    Assert.assertEquals("Repository URI", repoUri, repo.getUri());
+
+    // verify location
+    DatasetDescriptor created = repo.create("test",
+        new DatasetDescriptor.Builder()
+            .schemaLiteral("\"string\"")
+            .build()).getDescriptor();
+    Assert.assertEquals("Location should be in local FS",
+        "file", created.getLocation().getScheme());
+    Assert.assertTrue("Location should be in the repo path",
+        created.getLocation().getPath().endsWith("tmp/hive-repo/test"));
   }
 
   @SuppressWarnings("deprecation")

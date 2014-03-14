@@ -16,10 +16,11 @@
 
 package org.kitesdk.data.spi;
 
+import org.apache.hadoop.mapreduce.InputFormat;
 import org.kitesdk.data.Dataset;
 import org.kitesdk.data.DatasetReader;
 import org.kitesdk.data.DatasetWriter;
-import org.kitesdk.data.RefineableView;
+import org.kitesdk.data.RefinableView;
 import javax.annotation.concurrent.Immutable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,11 +32,11 @@ import org.slf4j.LoggerFactory;
  * @since 0.9.0
  */
 @Immutable
-public abstract class AbstractDataset<E> implements Dataset<E>, RefineableView<E> {
+public abstract class AbstractDataset<E> implements Dataset<E>, RefinableView<E> {
 
   private static final Logger logger = LoggerFactory.getLogger(AbstractDataset.class);
 
-  protected abstract RefineableView<E> asRefineableView();
+  protected abstract RefinableView<E> asRefinableView();
 
   @Override
   public Dataset<E> getDataset() {
@@ -46,14 +47,14 @@ public abstract class AbstractDataset<E> implements Dataset<E>, RefineableView<E
   public DatasetWriter<E> newWriter() {
     logger.debug("Getting writer to dataset:{}", this);
 
-    return asRefineableView().newWriter();
+    return asRefinableView().newWriter();
   }
 
   @Override
   public DatasetReader<E> newReader() {
     logger.debug("Getting reader for dataset:{}", this);
 
-    return asRefineableView().newReader();
+    return asRefinableView().newReader();
   }
 
   @Override
@@ -62,33 +63,43 @@ public abstract class AbstractDataset<E> implements Dataset<E>, RefineableView<E
   }
 
   @Override
-  public RefineableView<E> with(String name, Object... values) {
+  public RefinableView<E> with(String name, Object... values) {
     Conversions.checkTypeConsistency(getDescriptor(), name, values);
-    return asRefineableView().with(name, values);
+    return asRefinableView().with(name, values);
   }
 
   @Override
-  public RefineableView<E> from(String name, Comparable value) {
+  public RefinableView<E> from(String name, Comparable value) {
     Conversions.checkTypeConsistency(getDescriptor(), name, value);
-    return asRefineableView().from(name, value);
+    return asRefinableView().from(name, value);
   }
 
   @Override
-  public RefineableView<E> fromAfter(String name, Comparable value) {
+  public RefinableView<E> fromAfter(String name, Comparable value) {
     Conversions.checkTypeConsistency(getDescriptor(), name, value);
-    return asRefineableView().fromAfter(name, value);
+    return asRefinableView().fromAfter(name, value);
   }
 
   @Override
-  public RefineableView<E> to(String name, Comparable value) {
+  public RefinableView<E> to(String name, Comparable value) {
     Conversions.checkTypeConsistency(getDescriptor(), name, value);
-    return asRefineableView().to(name, value);
+    return asRefinableView().to(name, value);
   }
 
   @Override
-  public RefineableView<E> toBefore(String name, Comparable value) {
+  public RefinableView<E> toBefore(String name, Comparable value) {
     Conversions.checkTypeConsistency(getDescriptor(), name, value);
-    return asRefineableView().toBefore(name, value);
+    return asRefinableView().toBefore(name, value);
+  }
+
+  public InputFormat<E, Void> getDelegateInputFormat() {
+    throw new UnsupportedOperationException("No delegate input format defined.");
+  }
+
+  @Override
+  public boolean deleteAll() {
+    throw new UnsupportedOperationException(
+        "This Dataset does not support bulk deletion");
   }
 
 }

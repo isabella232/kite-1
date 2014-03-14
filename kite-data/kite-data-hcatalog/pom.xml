@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.kitesdk</groupId>
     <artifactId>kite-data</artifactId>
-    <version>0.11.1-SNAPSHOT</version>
+    <version>0.12.1-SNAPSHOT</version>
   </parent>
 
   <name>Kite Data Hive Module</name>
@@ -108,6 +108,21 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- TODO: this move into Hive, change when updating versions -->
+    <dependency>
+      <groupId>com.twitter</groupId>
+      <artifactId>parquet-hive</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.hadoop</groupId>
+          <artifactId>hadoop-core</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.hive</groupId>
+          <artifactId>hive-serde</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>

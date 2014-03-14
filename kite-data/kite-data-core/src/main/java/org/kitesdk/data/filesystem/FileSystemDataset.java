@@ -19,6 +19,7 @@ import com.google.common.collect.Sets;
 
 import java.util.Iterator;
 import java.util.Set;
+import org.apache.hadoop.mapreduce.InputFormat;
 import org.kitesdk.data.Dataset;
 import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.DatasetException;
@@ -26,7 +27,7 @@ import org.kitesdk.data.DatasetIOException;
 import org.kitesdk.data.DatasetRepositoryException;
 import org.kitesdk.data.PartitionKey;
 import org.kitesdk.data.PartitionStrategy;
-import org.kitesdk.data.RefineableView;
+import org.kitesdk.data.RefinableView;
 import org.kitesdk.data.impl.Accessor;
 import org.kitesdk.data.spi.AbstractDataset;
 import org.kitesdk.data.spi.FieldPartitioner;
@@ -80,12 +81,12 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
     this.convert = new PathConversion();
 
     this.unbounded = new FileSystemView<E>(this);
-    // remove this.partitionKey for 0.12.0
+    // remove this.partitionKey for 0.13.0
     this.partitionKey = null;
   }
 
   /**
-   * @deprecated will be removed in 0.12.0
+   * @deprecated will be removed in 0.13.0
    */
   @Deprecated
   FileSystemDataset(FileSystem fileSystem, Path directory, String name,
@@ -106,7 +107,7 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
   }
 
   /**
-   * @deprecated will be removed in 0.12.0
+   * @deprecated will be removed in 0.13.0
    */
   @Deprecated
   PartitionKey getPartitionKey() {
@@ -126,7 +127,8 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
   }
 
   public boolean deleteAll() {
-    return unbounded.deleteAll();
+    // no constraints, so delete is always aligned to partition boundaries
+    return unbounded.deleteAllUnsafe();
   }
 
   PathIterator pathIterator() {
@@ -143,7 +145,7 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
   }
 
   @Override
-  protected RefineableView<E> asRefineableView() {
+  protected RefinableView<E> asRefinableView() {
     return unbounded;
   }
 
@@ -303,7 +305,7 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
       } catch (IOException e) {
         throw new DatasetIOException("Dataset merge failed", e);
       }
-      if (partitionListener != null) {
+      if (descriptor.isPartitioned() && partitionListener != null) {
         String partition = newPartitionDirectory.toString();
         if (!addedPartitions.contains(partition)) {
           partitionListener.partitionAdded(name, partition);
@@ -311,6 +313,11 @@ class FileSystemDataset<E> extends AbstractDataset<E> implements Mergeable<FileS
         }
       }
     }
+  }
+
+  @Override
+  public InputFormat<E, Void> getDelegateInputFormat() {
+    return new FileSystemDatasetKeyInputFormat<E>(this);
   }
 
   @SuppressWarnings("unchecked")

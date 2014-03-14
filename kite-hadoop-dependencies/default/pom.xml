@@ -19,12 +19,12 @@
   <modelVersion>4.0.0</modelVersion>
   <artifactId>kite-hadoop-dependencies</artifactId>
   <packaging>pom</packaging>
-  <version>0.11.1-SNAPSHOT</version>
+  <version>0.12.1-SNAPSHOT</version>
 
   <parent>
     <groupId>org.kitesdk</groupId>
     <artifactId>kite-hadoop-deps-parent</artifactId>
-    <version>0.11.1-SNAPSHOT</version>
+    <version>0.12.1-SNAPSHOT</version>
   </parent>
 
   <name>Kite Hadoop Default Dependencies Module</name>
@@ -66,6 +66,12 @@
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-hdfs</artifactId>
       <version>${vers.hadoop}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro-mapred</artifactId>
+      <classifier>hadoop2</classifier>
+      <version>${vers.avro}</version>
     </dependency>
   </dependencies>
 

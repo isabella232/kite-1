@@ -16,6 +16,12 @@
 package org.kitesdk.data;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
+import java.util.Set;
+import org.kitesdk.data.spi.partition.DayOfMonthFieldPartitioner;
+import org.kitesdk.data.spi.partition.HourFieldPartitioner;
+import org.kitesdk.data.spi.partition.MinuteFieldPartitioner;
+import org.kitesdk.data.spi.partition.MonthFieldPartitioner;
 import org.kitesdk.data.spi.partition.PartitionFunctions;
 import java.beans.IntrospectionException;
 import java.beans.PropertyDescriptor;
@@ -35,6 +41,9 @@ import org.kitesdk.data.spi.partition.RangeFieldPartitioner;
 import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
 import org.kitesdk.data.spi.FieldPartitioner;
+import org.kitesdk.data.spi.partition.YearFieldPartitioner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * <p>
@@ -60,6 +69,8 @@ import org.kitesdk.data.spi.FieldPartitioner;
 @Immutable
 public class PartitionStrategy {
 
+  private static final Logger LOG = LoggerFactory.getLogger(PartitionStrategy.class);
+
   private final List<FieldPartitioner> fieldPartitioners;
 
   static {
@@ -68,11 +79,8 @@ public class PartitionStrategy {
 
   /**
    * Construct a partition strategy with a list of field partitioners.
-   *
-   * @deprecated will be removed in 0.12.0; use PartitionStrategy.Builder
    */
-  @Deprecated
-  public PartitionStrategy(List<FieldPartitioner> partitioners) {
+  PartitionStrategy(List<FieldPartitioner> partitioners) {
     this.fieldPartitioners = ImmutableList.copyOf(partitioners);
   }
 
@@ -246,21 +254,25 @@ public class PartitionStrategy {
    */
   public static class Builder {
 
-    private List<FieldPartitioner> fieldPartitioners = Lists.newArrayList();
+    private final List<FieldPartitioner> fieldPartitioners = Lists.newArrayList();
+    private final Set<String> names = Sets.newHashSet();
 
     /**
      * Configure a hash partitioner with the specified number of {@code buckets}
      * .
      *
-     * @param name
+     * The partition name will be the source field name with a "_hash" suffix.
+     * For example, hash("color", 34) will create "color_hash" partitions.
+     *
+     * @param sourceName
      *          The entity field name from which to get values to be
      *          partitioned.
      * @param buckets
      *          The number of buckets into which data is to be partitioned.
      * @return An instance of the builder for method chaining.
      */
-    public Builder hash(String name, int buckets) {
-      fieldPartitioners.add(new HashFieldPartitioner(name, buckets));
+    public Builder hash(String sourceName, int buckets) {
+      add(new HashFieldPartitioner(sourceName, buckets));
       return this;
     }
 
@@ -279,29 +291,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder hash(String sourceName, String name, int buckets) {
-      fieldPartitioners.add(new HashFieldPartitioner(sourceName, name, buckets));
-      return this;
-    }
-
-    /**
-     * Configure an identity partitioner for strings with a cardinality hint of
-     * {@code buckets} size.
-     * 
-     * @param name
-     *          The entity field name from which to get values to be
-     *          partitioned.
-     * @param buckets
-     *          A hint as to the number of partitions that will be created (i.e.
-     *          the number of discrete values for the field {@code name} in the
-     *          data).
-     * @return An instance of the builder for method chaining.
-     * @see IdentityFieldPartitioner
-     * @deprecated Use {@link #identity(String, Class, int)}.
-     */
-    @Deprecated
-    @SuppressWarnings("unchecked")
-    public Builder identity(String name, int buckets) {
-      fieldPartitioners.add(new IdentityFieldPartitioner(name, String.class, buckets));
+      add(new HashFieldPartitioner(sourceName, name, buckets));
       return this;
     }
 
@@ -309,7 +299,11 @@ public class PartitionStrategy {
      * Configure an identity partitioner for a given type with a cardinality hint of
      * {@code buckets} size.
      *
-     * @param name
+     * The partition name will be the source field name with a "_copy" suffix.
+     * For example, identity("color", String.class, 34) will create "color_copy"
+     * partitions.
+     *
+     * @param sourceName
      *          The entity field name from which to get values to be
      *          partitioned.
      * @param type
@@ -321,17 +315,51 @@ public class PartitionStrategy {
      * @return An instance of the builder for method chaining.
      * @see IdentityFieldPartitioner
      * @since 0.8.0
+     * @deprecated will be removed in 0.14.0;
+     *          use {@link #identity(String, String, Class, int)}
+     */
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public <S> Builder identity(String sourceName, Class<S> type, int buckets) {
+      add(new IdentityFieldPartitioner(
+          sourceName, sourceName + "_copy", type, buckets));
+      return this;
+    }
+
+    /**
+     * Configure an identity partitioner for a given type with a cardinality hint of
+     * {@code buckets} size.
+     *
+     * @param sourceName
+     *          The entity field name from which to get values to be
+     *          partitioned.
+     * @param name
+     *          A name for the partition field
+     * @param type
+     *          The type of the field. This must match the schema.
+     * @param buckets
+     *          A hint as to the number of partitions that will be created (i.e.
+     *          the number of discrete values for the field {@code name} in the
+     *          data).
+     * @return An instance of the builder for method chaining.
+     * @see IdentityFieldPartitioner
+     * @since 0.8.0
      */
     @SuppressWarnings("unchecked")
-    public <S> Builder identity(String name, Class<S> type, int buckets) {
-      fieldPartitioners.add(new IdentityFieldPartitioner(name, type, buckets));
+    public <S> Builder identity(String sourceName, String name, Class<S> type,
+                                int buckets) {
+      add(new IdentityFieldPartitioner(sourceName, name, type, buckets));
       return this;
     }
 
     /**
      * Configure a range partitioner with a set of {@code upperBounds}.
-     * 
-     * @param name
+     *
+     * The partition name will be the source field name with a "_bound" suffix.
+     * For example, range("number", 5, 10) will create "number_bound"
+     * partitions.
+     *
+     * @param sourceName
      *          The entity field name from which to get values to be
      *          partitioned.
      * @param upperBounds
@@ -339,23 +367,27 @@ public class PartitionStrategy {
      * @return An instance of the builder for method chaining.
      * @see IntRangeFieldPartitioner
      */
-    public Builder range(String name, int... upperBounds) {
-      fieldPartitioners.add(new IntRangeFieldPartitioner(name, upperBounds));
+    public Builder range(String sourceName, int... upperBounds) {
+      add(new IntRangeFieldPartitioner(sourceName, upperBounds));
       return this;
     }
 
     /**
      * Configure a range partitioner for strings with a set of {@code upperBounds}.
-     * 
-     * @param name
+     *
+     * The partition name will be the source field name with a "_bound" suffix.
+     * For example, range("color", "blue", "green") will create "color_bound"
+     * partitions.
+     *
+     * @param sourceName
      *          The entity field name from which to get values to be
      *          partitioned.
      * @param upperBounds
      *          A variadic list of upper bounds of each partition.
      * @return An instance of the builder for method chaining.
      */
-    public Builder range(String name, String... upperBounds) {
-      fieldPartitioners.add(new RangeFieldPartitioner(name, upperBounds));
+    public Builder range(String sourceName, String... upperBounds) {
+      add(new RangeFieldPartitioner(sourceName, upperBounds));
       return this;
     }
 
@@ -372,7 +404,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder year(String sourceName, String name) {
-      fieldPartitioners.add(PartitionFunctions.year(sourceName, name));
+      add(new YearFieldPartitioner(sourceName, name));
       return this;
     }
 
@@ -387,7 +419,8 @@ public class PartitionStrategy {
      * @since 0.8.0
      */
     public Builder year(String sourceName) {
-      return year(sourceName, "year");
+      add(new YearFieldPartitioner(sourceName));
+      return this;
     }
 
     /**
@@ -403,7 +436,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder month(String sourceName, String name) {
-      fieldPartitioners.add(PartitionFunctions.month(sourceName, name));
+      add(new MonthFieldPartitioner(sourceName, name));
       return this;
     }
 
@@ -418,7 +451,8 @@ public class PartitionStrategy {
      * @since 0.8.0
      */
     public Builder month(String sourceName) {
-      return this.month(sourceName, "month");
+      add(new MonthFieldPartitioner(sourceName));
+      return this;
     }
 
     /**
@@ -434,7 +468,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder day(String sourceName, String name) {
-      fieldPartitioners.add(PartitionFunctions.day(sourceName, name));
+      add(new DayOfMonthFieldPartitioner(sourceName, name));
       return this;
     }
 
@@ -449,7 +483,8 @@ public class PartitionStrategy {
      * @since 0.8.0
      */
     public Builder day(String sourceName) {
-      return this.day(sourceName, "day");
+      add(new DayOfMonthFieldPartitioner(sourceName));
+      return this;
     }
 
     /**
@@ -465,7 +500,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder hour(String sourceName, String name) {
-      fieldPartitioners.add(PartitionFunctions.hour(sourceName, name));
+      add(new HourFieldPartitioner(sourceName, name));
       return this;
     }
 
@@ -480,7 +515,8 @@ public class PartitionStrategy {
      * @since 0.8.0
      */
     public Builder hour(String sourceName) {
-      return this.hour(sourceName, "hour");
+      add(new HourFieldPartitioner(sourceName));
+      return this;
     }
 
     /**
@@ -496,7 +532,7 @@ public class PartitionStrategy {
      * @since 0.3.0
      */
     public Builder minute(String sourceName, String name) {
-      fieldPartitioners.add(PartitionFunctions.minute(sourceName, name));
+      add(new MinuteFieldPartitioner(sourceName, name));
       return this;
     }
 
@@ -511,7 +547,8 @@ public class PartitionStrategy {
      * @since 0.8.0
      */
     public Builder minute(String sourceName) {
-      return minute(sourceName, "minute");
+      add(new MinuteFieldPartitioner(sourceName));
+      return this;
     }
 
     /**
@@ -528,7 +565,7 @@ public class PartitionStrategy {
      * @since 0.9.0
      */
     public Builder dateFormat(String sourceName, String name, String format) {
-      fieldPartitioners.add(PartitionFunctions.dateFormat(sourceName, name, format));
+      add(PartitionFunctions.dateFormat(sourceName, name, format));
       return this;
     }
 
@@ -541,9 +578,27 @@ public class PartitionStrategy {
      * @return The configured instance of {@link PartitionStrategy}.
      * @since 0.9.0
      */
-    @SuppressWarnings("deprecated")
     public PartitionStrategy build() {
       return new PartitionStrategy(fieldPartitioners);
+    }
+
+    private void add(FieldPartitioner fp) {
+      // in 0.14.0, change to a Precondition
+      //Preconditions.checkArgument(!names.contains(fp.getSourceName()),
+      //    "Source name conflicts with an existing field or partition name");
+      //Preconditions.checkArgument(!names.contains(fp.getName()),
+      //    "Partition name conflicts with an existing field or partition name");
+      if (names.contains(fp.getSourceName())) {
+        LOG.warn(
+            "Source name conflicts with an existing field or partition name");
+      }
+      if (names.contains(fp.getName())) {
+        LOG.warn(
+            "Partition name conflicts with an existing field or partition name");
+      }
+      fieldPartitioners.add(fp);
+      names.add(fp.getSourceName());
+      names.add(fp.getName());
     }
   }
 
