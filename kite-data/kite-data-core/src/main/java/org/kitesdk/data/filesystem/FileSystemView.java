@@ -119,7 +119,7 @@ class FileSystemView<E> extends AbstractRefinableView<E> {
             value="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE",
             justification="False positive, initialized above as non-null.")
         public Path apply(@Nullable Pair<StorageKey, Path> input) {
-          return input.second();
+          return new Path(root, input.second());
         }
       });
     } else {
