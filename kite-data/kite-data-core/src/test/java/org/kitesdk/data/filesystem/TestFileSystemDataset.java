@@ -413,6 +413,23 @@ public class TestFileSystemDataset extends MiniDFSTest {
 
   @Test
   public void testPathIterator_Directory() {
+    FileSystemDataset<Record> ds = new FileSystemDataset.Builder()
+        .name("users")
+        .configuration(getConfiguration())
+        .descriptor(new DatasetDescriptor.Builder()
+            .schema(USER_SCHEMA)
+            .format(format)
+            .location(testDirectory)
+            .build())
+        .build();
+
+    List<Path> dirPaths = Lists.newArrayList(ds.dirIterator());
+    Assert.assertEquals("dirIterator for non-partitioned dataset should yield a single path.", 1, dirPaths.size());
+    Assert.assertEquals("dirIterator should yield absolute paths.", testDirectory, dirPaths.get(0));
+  }
+
+  @Test
+  public void testPathIterator_Partition_Directory() {
     PartitionStrategy partitionStrategy = new PartitionStrategy.Builder()
         .hash("username", 2).hash("email", 3).build();
 
@@ -440,6 +457,7 @@ public class TestFileSystemDataset extends MiniDFSTest {
     // 2 user directories * 3 email directories
     Assert.assertEquals(6, dirPaths.size());
 
+    Assert.assertTrue("dirIterator should yield absolute paths.", dirPaths.get(0).isAbsolute());
   }
 
   @SuppressWarnings("deprecation")
